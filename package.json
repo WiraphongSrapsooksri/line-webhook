@@ -12,10 +12,12 @@
   "license": "ISC",
   "dependencies": {
     "@line/bot-sdk": "^9.7.0",
+    "axios": "^1.8.1",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "line-webhook": "file:",
-    "mssql": "^11.0.1"
+    "mssql": "^11.0.1",
+    "winston": "^3.17.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.9"

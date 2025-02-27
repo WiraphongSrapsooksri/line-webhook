@@ -1,10 +1,9 @@
 version: '3.8'
-
 services:
-  app:
+  webhook:
     image: wiraphong2003/webhook-line-main:latest
-    # ถ้าต้องการ build จาก local แทน สามารถใช้:
-    # build: .
+    container_name: webhook_line_main
+    restart: always
     ports:
       - "3001:3001"
     environment:
@@ -15,35 +14,21 @@ services:
       - DB_PASSWORD=${DB_PASSWORD}
       - DB_NAME=${DB_NAME}
       - DB_SERVER=${DB_SERVER}
-    restart: always
+      - PORT=${PORT}
+      - SLIPOK_API_URL=${SLIPOK_API_URL}
+      - SLIPOK_API_KEY=${SLIPOK_API_KEY}
+      - STATUS_API_URL=${STATUS_API_URL}
+      - BASE_URL=${BASE_URL}
+    volumes:
+      - uploads:/usr/src/app/uploads
+      - logs:/usr/src/app/logs  # เพิ่ม volume สำหรับ logs
     networks:
-      - line-webhook-network
+      - webhook_network_main
+
+volumes:
+  uploads:
+  logs:  # กำหนด volume สำหรับ logs
 
 networks:
-  line-webhook-network:
+  webhook_network_main:
     driver: bridge
-
-
-# version: '3.8'
-# services:
-#   webhook:
-#     image: wiraphong2003/webhook-line-main:latest
-#     container_name: webhook_line_main
-#     restart: always
-#     ports:
-#       - "3001:3001"
-#     environment:
-#       - NODE_ENV=production
-#       - LINE_CHANNEL_ACCESS_TOKEN=${LINE_CHANNEL_ACCESS_TOKEN}
-#       - LINE_CHANNEL_SECRET=${LINE_CHANNEL_SECRET}
-#       - DB_USER=${DB_USER}
-#       - DB_PASSWORD=${DB_PASSWORD}
-#       - DB_NAME=${DB_NAME}
-#       - DB_SERVER=${DB_SERVER}
-#     networks:
-#       - webhook_network_main
-
-# networks:
-#   webhook_network:
-#     name: webhook_network_main
-#     driver: bridge    

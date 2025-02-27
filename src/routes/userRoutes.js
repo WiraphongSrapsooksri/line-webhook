@@ -1,18 +1,43 @@
 const express = require('express');
 const UserController = require('../controllers/userController');
+const { getConnection } = require('../config/database');
+const sql = require('mssql');
 
 const router = express.Router();
 
-// GET /api/users - ดึงข้อมูลผู้ใช้ทั้งหมด
 router.get('/', UserController.getAllUsers);
-
-// GET /api/users/search?name=xxx - ค้นหาผู้ใช้ตามชื่อ
 router.get('/search', UserController.searchUsers);
-
-// GET /api/users/stats - ดึงสถิติผู้ใช้
 router.get('/stats', UserController.getUserStats);
-
-// GET /api/users/:userId - ดึงข้อมูลผู้ใช้ตาม ID
 router.get('/:userId', UserController.getUserById);
+
+router.get('/:userId/images', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const pool = await getConnection();
+    
+    const result = await pool.request()
+      .input('userId', sql.NVarChar, userId)
+      .query(`
+        SELECT 
+          message_id,
+          image_url,
+          created_at
+        FROM line_user_images
+        WHERE line_user_id = @userId
+        ORDER BY created_at DESC
+      `);
+
+    res.json({
+      status: 'success',
+      data: result.recordset
+    });
+  } catch (error) {
+    console.error('Error getting user images:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to get user images'
+    });
+  }
+});
 
 module.exports = router;

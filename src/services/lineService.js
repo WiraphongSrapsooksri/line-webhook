@@ -1,12 +1,12 @@
 const line = require('@line/bot-sdk');
+const fs = require('fs').promises;
+const path = require('path');
 
-// Line SDK config
 const lineConfig = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
-  channelSecret: process.env.LINE_CHANNEL_SECRET
+  channelSecret: process.env.LINE_CHANNEL_SECRET,
 };
 
-// Create LINE SDK client
 const client = new line.Client(lineConfig);
 
 class LineService {
@@ -23,7 +23,27 @@ class LineService {
     }
   }
 
-  // เพิ่มเมธอดอื่นๆ ที่เกี่ยวกับ Line API ที่นี่
+  static async saveImageMessage(messageId, userId) {
+    try {
+      const stream = await client.getMessageContent(messageId);
+      const uploadDir = path.join(__dirname, '..', 'uploads', userId);
+      await fs.mkdir(uploadDir, { recursive: true });
+
+      const filePath = path.join(uploadDir, `${messageId}.jpg`);
+      const writeStream = require('fs').createWriteStream(filePath);
+
+      await new Promise((resolve, reject) => {
+        stream.pipe(writeStream);
+        stream.on('end', resolve);
+        stream.on('error', reject);
+      });
+
+      return `/uploads/${userId}/${messageId}.jpg`;
+    } catch (error) {
+      console.error('Error saving image message:', error);
+      throw error;
+    }
+  }
 }
 
 module.exports = LineService;
