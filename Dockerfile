@@ -14,7 +14,7 @@ RUN npm install
 COPY . .
 
 # เปิดพอร์ต 3000
-EXPOSE 3000
+EXPOSE 3001
 
 # คำสั่งเริ่มต้นแอพ
 CMD ["npm", "start"]

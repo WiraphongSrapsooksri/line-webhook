@@ -8,7 +8,7 @@ class UserModel {
       // Check if user exists
       const result = await pool.request()
         .input('userId', sql.NVarChar, userId)
-        .query('SELECT id FROM line_users WHERE line_user_id = @userId');
+        .query('SELECT id FROM line_users_main WHERE line_user_id = @userId');
 
       if (result.recordset.length > 0) {
         // Update existing user
@@ -19,7 +19,7 @@ class UserModel {
           .input('statusMessage', sql.NVarChar, statusMessage)
           .input('language', sql.NVarChar, language)
           .query(`
-            UPDATE line_users 
+            UPDATE line_users_main 
             SET display_name = COALESCE(@displayName, display_name),
                 picture_url = COALESCE(@pictureUrl, picture_url),
                 status_message = COALESCE(@statusMessage, status_message),
@@ -35,7 +35,7 @@ class UserModel {
           .input('statusMessage', sql.NVarChar, statusMessage)
           .input('language', sql.NVarChar, language)
           .query(`
-            INSERT INTO line_users 
+            INSERT INTO line_users_main 
             (line_user_id, display_name, picture_url, status_message, language)
             VALUES (@userId, @displayName, @pictureUrl, @statusMessage, @language)
           `);
@@ -53,7 +53,7 @@ class UserModel {
         .input('userId', sql.NVarChar, userId)
         .input('message', sql.NVarChar, message)
         .query(`
-          UPDATE line_users 
+          UPDATE line_users_main 
           SET last_message = @message,
               last_message_timestamp = GETUTCDATE()
           WHERE line_user_id = @userId

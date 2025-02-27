@@ -2,11 +2,11 @@ version: '3.8'
 
 services:
   app:
-    image: wiraphong2003/web_hook_line:latest
+    image: wiraphong2003/webhook-line-main:latest
     # ถ้าต้องการ build จาก local แทน สามารถใช้:
     # build: .
     ports:
-      - "3000:3000"
+      - "3001:3001"
     environment:
       - NODE_ENV=production
       - LINE_CHANNEL_ACCESS_TOKEN=${LINE_CHANNEL_ACCESS_TOKEN}
@@ -22,3 +22,28 @@ services:
 networks:
   line-webhook-network:
     driver: bridge
+
+
+# version: '3.8'
+# services:
+#   webhook:
+#     image: wiraphong2003/webhook-line-main:latest
+#     container_name: webhook_line_main
+#     restart: always
+#     ports:
+#       - "3001:3001"
+#     environment:
+#       - NODE_ENV=production
+#       - LINE_CHANNEL_ACCESS_TOKEN=${LINE_CHANNEL_ACCESS_TOKEN}
+#       - LINE_CHANNEL_SECRET=${LINE_CHANNEL_SECRET}
+#       - DB_USER=${DB_USER}
+#       - DB_PASSWORD=${DB_PASSWORD}
+#       - DB_NAME=${DB_NAME}
+#       - DB_SERVER=${DB_SERVER}
+#     networks:
+#       - webhook_network_main
+
+# networks:
+#   webhook_network:
+#     name: webhook_network_main
+#     driver: bridge    

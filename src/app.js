@@ -102,9 +102,7 @@ app.use((err, req, res, next) => {
 });
 
 // Start server
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
-//   console.log('Line Channel Secret:', process.env.LINE_CHANNEL_SECRET?.substring(0, 5) + '...');
-//   console.log('Line Access Token:', process.env.LINE_CHANNEL_ACCESS_TOKEN?.substring(0, 5) + '...');
 });

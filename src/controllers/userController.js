@@ -18,7 +18,7 @@ class UserController {
             last_message_timestamp,
             created_at,
             updated_at
-          FROM line_users
+          FROM line_users_main
           ORDER BY created_at DESC
         `);
       
@@ -54,7 +54,7 @@ class UserController {
             last_message_timestamp,
             created_at,
             updated_at
-          FROM line_users
+          FROM line_users_main
           WHERE line_user_id = @userId
         `);
 
@@ -97,7 +97,7 @@ class UserController {
             last_message_timestamp,
             created_at,
             updated_at
-          FROM line_users
+          FROM line_users_main
           WHERE display_name LIKE @name
           ORDER BY created_at DESC
         `);
@@ -126,7 +126,7 @@ class UserController {
             COUNT(*) as total_users,
             COUNT(CASE WHEN last_message_timestamp >= DATEADD(day, -1, GETUTCDATE()) THEN 1 END) as active_last_24h,
             COUNT(CASE WHEN last_message_timestamp >= DATEADD(day, -7, GETUTCDATE()) THEN 1 END) as active_last_7d
-          FROM line_users
+          FROM line_users_main
         `);
 
       res.json({
