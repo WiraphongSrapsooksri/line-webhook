@@ -4,24 +4,15 @@ const line = require('@line/bot-sdk');
 const LineService = require('./services/lineService');
 const UserModel = require('./models/userModel');
 const userRoutes = require('./routes/userRoutes');
+const billingScheduleRoutes = require('./routes/billingScheduleRoutes');
 const path = require('path');
 const axios = require('axios');
-const winston = require('winston');
+const cron = require('node-cron');
+const logger = require('./logger'); // นำเข้า logger จากไฟล์แยก
+const { getConnection } = require('./config/database');
+const sql = require('mssql');
 
 const app = express();
-
-// ตั้งค่า Winston Logger
-const logger = winston.createLogger({
-  level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-    winston.format.printf(({ timestamp, level, message }) => `${timestamp} [${level.toUpperCase()}]: ${message}`)
-  ),
-  transports: [
-    new winston.transports.Console(),
-    new winston.transports.File({ filename: 'logs/app.log' })
-  ]
-});
 
 const lineConfig = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
@@ -35,15 +26,6 @@ if (!lineConfig.channelAccessToken || !lineConfig.channelSecret) {
 
 const client = new line.Client(lineConfig);
 
-app.use(express.json({
-  verify: (req, res, buf) => {
-    req.rawBody = buf;
-  }
-}));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-app.get('/', (req, res) => res.status(200).json({ status: 'ok' }));
-app.use('/api/users', userRoutes);
-
 const SLIPOK_API_URL = process.env.SLIPOK_API_URL;
 const SLIPOK_API_KEY = process.env.SLIPOK_API_KEY;
 const STATUS_API_URL = process.env.STATUS_API_URL;
@@ -53,6 +35,17 @@ if (!SLIPOK_API_URL || !SLIPOK_API_KEY || !STATUS_API_URL || !BASE_URL) {
   logger.error('Missing required environment variables (SLIPOK_API_URL, SLIPOK_API_KEY, STATUS_API_URL, or BASE_URL)');
   process.exit(1);
 }
+
+// Middleware
+app.use(express.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.get('/', (req, res) => res.status(200).json({ status: 'ok' }));
+app.use('/api/users', userRoutes);
+app.use('/api/billing-schedule', billingScheduleRoutes);
 
 // Webhook endpoint
 app.post('/webhook', line.middleware(lineConfig), async (req, res) => {
@@ -144,7 +137,7 @@ app.post('/webhook', line.middleware(lineConfig), async (req, res) => {
             let replyText = '';
             if (slipAmount >= required_amount) {
               status = 'on';
-              replyText = `✅ Payment verified! Amount: ${slipAmount} THB`;
+              replyText = `✅ การชำระเงินถูกต้องจำนวน: ${slipAmount} THB`;
               logger.info(`Payment verified for user ${userId}`);
             } else {
               replyText = `❌ Payment insufficient. Amount: ${slipAmount} THB, Required: ${required_amount} THB`;
@@ -179,7 +172,7 @@ app.post('/webhook', line.middleware(lineConfig), async (req, res) => {
           }
         }
       } catch (error) {
-        logger.error('Error processing event: ' + error.message + '\n' + error.stack);
+        logger.error(`Error processing event for user ${userId}: ${error.message}`, { stack: error.stack });
         if (axios.isAxiosError(error) && error.response) {
           logger.error('SlipOK Error Details: ' + JSON.stringify(error.response.data, null, 2));
           await client.replyMessage(replyToken, {
@@ -198,14 +191,113 @@ app.post('/webhook', line.middleware(lineConfig), async (req, res) => {
     logger.info('Webhook processed successfully');
     res.status(200).end();
   } catch (error) {
-    logger.error('Webhook Error: ' + error.message + '\n' + error.stack);
+    logger.error('Webhook Error: ' + error.message, { stack: error.stack });
     res.status(500).json({ status: 'error', message: error.message });
+  }
+});
+
+// Scheduler for billing
+cron.schedule('* * * * *', async () => {
+  let pool;
+  try {
+    const now = new Date();
+    logger.info(`Checking billing schedule at ${now}`);
+
+    pool = await getConnection();
+    const schedules = await pool.request()
+      .input('now', sql.DateTime2, now)
+      .query(`
+        SELECT id, billing_date, disable_date
+        FROM billing_schedule
+        WHERE is_active = 1
+        AND (
+          DATEADD(minute, -1, billing_date) <= @now AND billing_date >= @now
+          OR DATEADD(minute, -1, disable_date) <= @now AND disable_date >= @now
+        )
+      `);
+
+    if (!schedules.recordset.length) {
+      logger.info('No billing schedule to process');
+      return;
+    }
+
+    for (const schedule of schedules.recordset) {
+      const billingTime = new Date(schedule.billing_date);
+      const disableTime = new Date(schedule.disable_date);
+
+      // ส่งข้อความเรียกเก็บเงิน
+      if (now >= billingTime && now < new Date(billingTime.getTime() + 60000)) {
+        logger.info(`Processing billing for schedule ${schedule.id}`);
+        const users = await pool.request().query(`
+          SELECT lum.line_user_id, lupc.required_amount, u9.username
+          FROM line_users_main lum
+          JOIN line_user_payment_config lupc ON lum.line_user_id = lupc.line_user_id
+          JOIN userm9 u9 ON lupc.userm9_id = u9.id
+        `);
+
+        for (const user of users.recordset) {
+          const message = {
+            type: 'text',
+            text: `📢 ค่าบริการรายเดือน ${user.required_amount} THB\nกรุณาชำระภายใน ${disableTime.toLocaleString()} \nมิฉะนั้นระบบจะถูกปิดใช้งาน`
+          };
+          await client.pushMessage(user.line_user_id, message);
+          logger.info(`Billing message sent to ${user.line_user_id}`);
+        }
+      }
+
+      // ปิดระบบสำหรับผู้ที่ยังไม่จ่าย
+      if (now >= disableTime && now < new Date(disableTime.getTime() + 60000)) {
+        logger.info(`Processing disable for schedule ${schedule.id}`);
+        const users = await pool.request().query(`
+          SELECT 
+            lum.line_user_id,
+            u9.username,
+            lut.status,
+            lut.trans_timestamp
+          FROM line_users_main lum
+          LEFT JOIN line_user_payment_config lupc ON lum.line_user_id = lupc.line_user_id
+          LEFT JOIN userm9 u9 ON lupc.userm9_id = u9.id
+          LEFT JOIN (
+            SELECT line_user_id, status, trans_timestamp
+            FROM line_user_transactions
+            WHERE (line_user_id, trans_timestamp) IN (
+              SELECT line_user_id, MAX(trans_timestamp)
+              FROM line_user_transactions
+              GROUP BY line_user_id
+            )
+          ) lut ON lum.line_user_id = lut.line_user_id
+        `);
+
+        for (const user of users.recordset) {
+          const lastPaymentDate = user.trans_timestamp ? new Date(user.trans_timestamp) : null;
+          const isPaidAfterBilling = lastPaymentDate && 
+            lastPaymentDate >= billingTime && 
+            user.status === 'on';
+
+          if (!isPaidAfterBilling) {
+            await axios.put(STATUS_API_URL, {
+              username: user.username,
+              status: 'off'
+            });
+            await client.pushMessage(user.line_user_id, {
+              type: 'text',
+              text: '❌ ระบบของคุณถูกปิดใช้งานเนื่องจากยังไม่ชำระค่าบริการ'
+            });
+            logger.info(`Disabled system for ${user.line_user_id}`);
+          }
+        }
+      }
+    }
+  } catch (error) {
+    logger.error('Error in scheduler: ' + error.message, { stack: error.stack });
+  } finally {
+    if (pool) pool.close(); // ปิด connection pool
   }
 });
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  logger.error('Error: ' + err.message + '\n' + err.stack);
+  logger.error(`Error: ${err.message}`, { stack: err.stack });
   if (err instanceof line.SignatureValidationFailed) {
     return res.status(401).json({ status: 'error', message: 'Invalid signature' });
   }
