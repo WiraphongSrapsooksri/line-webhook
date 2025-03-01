@@ -43,9 +43,11 @@ app.use(express.json({
   }
 }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-app.get('/', (req, res) => res.status(200).json({ status: 'ok' }));
 app.use('/api/users', userRoutes);
 app.use('/api/billing-schedule', billingScheduleRoutes);
+
+app.get('/', (req, res) => res.status(200).json({ status: 'ok' }));
+
 
 // Webhook endpoint
 app.post('/webhook', line.middleware(lineConfig), async (req, res) => {
