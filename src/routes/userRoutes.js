@@ -8,7 +8,7 @@ router.get("/", UserController.getAllUsers);
 router.get("/search", UserController.searchUsers);
 router.get("/stats", UserController.getUserStats);
 router.get("/:userId", UserController.getUserById);
-router.get("/list", UserController.getUserList);
+
 
 router.get("/:userId/images", async (req, res) => {
   try {

@@ -4,6 +4,7 @@ const line = require('@line/bot-sdk');
 const LineService = require('./services/lineService');
 const UserModel = require('./models/userModel');
 const userRoutes = require('./routes/userRoutes');
+const userListPayment = require('./routes/userListPayment');
 const billingScheduleRoutes = require('./routes/billingScheduleRoutes');
 const path = require('path');
 const axios = require('axios');
@@ -11,6 +12,8 @@ const cron = require('node-cron');
 const logger = require('./logger'); // นำเข้า logger จากไฟล์แยก
 const { getConnection } = require('./config/database');
 const sql = require('mssql');
+const cors = require('cors');
+
 
 const app = express();
 
@@ -18,6 +21,16 @@ const lineConfig = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET
 };
+
+app.use(cors({
+  origin: 'http://localhost:5173', // Allow requests only from this origin
+  methods: ['GET', 'POST', 'PUT', 'DELETE'], // Specify allowed HTTP methods
+  allowedHeaders: ['Content-Type', 'Authorization'], // Specify allowed headers
+  credentials: true // Allow cookies and authentication headers
+}));
+
+app.use(cors());
+
 
 if (!lineConfig.channelAccessToken || !lineConfig.channelSecret) {
   logger.error('Missing LINE_CHANNEL_ACCESS_TOKEN or LINE_CHANNEL_SECRET');
@@ -44,6 +57,7 @@ app.use(express.json({
 }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/users', userRoutes);
+app.use('/api/userlistpayment', userListPayment);
 app.use('/api/billing-schedule', billingScheduleRoutes);
 
 app.get('/', (req, res) => res.status(200).json({ status: 'ok' }));
