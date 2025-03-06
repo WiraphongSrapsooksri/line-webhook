@@ -13,7 +13,7 @@ const logger = require('./logger'); // นำเข้า logger จากไฟ
 const { getConnection } = require('./config/database');
 const sql = require('mssql');
 const cors = require('cors');
-
+const scheduler = require('./services/scheduler');
 
 const app = express();
 
@@ -61,7 +61,7 @@ app.use('/api/userlistpayment', userListPayment);
 app.use('/api/billing-schedule', billingScheduleRoutes);
 
 app.get('/', (req, res) => res.status(200).json({ status: 'ok' }));
-
+app.use(scheduler);
 
 // Webhook endpoint
 app.post('/webhook', line.middleware(lineConfig), async (req, res) => {
@@ -212,104 +212,104 @@ app.post('/webhook', line.middleware(lineConfig), async (req, res) => {
   }
 });
 
-// Scheduler for billing
-cron.schedule('* * * * *', async () => {
-  let pool;
-  try {
-    const now = new Date();
-    logger.info(`Checking billing schedule at ${now}`);
+// // Scheduler for billing
+// cron.schedule('* * * * *', async () => {
+//   let pool;
+//   try {
+//     const now = new Date();
+//     logger.info(`Checking billing schedule at ${now}`);
 
-    pool = await getConnection();
-    const schedules = await pool.request()
-      .input('now', sql.DateTime2, now)
-      .query(`
-        SELECT id, billing_date, disable_date
-        FROM billing_schedule
-        WHERE is_active = 1
-        AND (
-          DATEADD(minute, -1, billing_date) <= @now AND billing_date >= @now
-          OR DATEADD(minute, -1, disable_date) <= @now AND disable_date >= @now
-        )
-      `);
+//     pool = await getConnection();
+//     const schedules = await pool.request()
+//       .input('now', sql.DateTime2, now)
+//       .query(`
+//         SELECT id, billing_date, disable_date
+//         FROM billing_schedule
+//         WHERE is_active = 1
+//         AND (
+//           DATEADD(minute, -1, billing_date) <= @now AND billing_date >= @now
+//           OR DATEADD(minute, -1, disable_date) <= @now AND disable_date >= @now
+//         )
+//       `);
 
-    if (!schedules.recordset.length) {
-      logger.info('No billing schedule to process');
-      return;
-    }
+//     if (!schedules.recordset.length) {
+//       logger.info('No billing schedule to process');
+//       return;
+//     }
 
-    for (const schedule of schedules.recordset) {
-      const billingTime = new Date(schedule.billing_date);
-      const disableTime = new Date(schedule.disable_date);
+//     for (const schedule of schedules.recordset) {
+//       const billingTime = new Date(schedule.billing_date);
+//       const disableTime = new Date(schedule.disable_date);
 
-      // ส่งข้อความเรียกเก็บเงิน
-      if (now >= billingTime && now < new Date(billingTime.getTime() + 60000)) {
-        logger.info(`Processing billing for schedule ${schedule.id}`);
-        const users = await pool.request().query(`
-          SELECT lum.line_user_id, lupc.required_amount, u9.username
-          FROM line_users_main lum
-          JOIN line_user_payment_config lupc ON lum.line_user_id = lupc.line_user_id
-          JOIN userm9 u9 ON lupc.userm9_id = u9.id
-        `);
+//       // ส่งข้อความเรียกเก็บเงิน
+//       if (now >= billingTime && now < new Date(billingTime.getTime() + 60000)) {
+//         logger.info(`Processing billing for schedule ${schedule.id}`);
+//         const users = await pool.request().query(`
+//           SELECT lum.line_user_id, lupc.required_amount, u9.username
+//           FROM line_users_main lum
+//           JOIN line_user_payment_config lupc ON lum.line_user_id = lupc.line_user_id
+//           JOIN userm9 u9 ON lupc.userm9_id = u9.id
+//         `);
 
-        for (const user of users.recordset) {
-          const message = {
-            type: 'text',
-            text: `📢 ค่าบริการรายเดือน ${user.required_amount} THB\nกรุณาชำระภายใน ${disableTime.toLocaleString()} \nมิฉะนั้นระบบจะถูกปิดใช้งาน`
-          };
-          await client.pushMessage(user.line_user_id, message);
-          logger.info(`Billing message sent to ${user.line_user_id}`);
-        }
-      }
+//         for (const user of users.recordset) {
+//           const message = {
+//             type: 'text',
+//             text: `📢 ค่าบริการรายเดือน ${user.required_amount} THB\nกรุณาชำระภายใน ${disableTime.toLocaleString()} \nมิฉะนั้นระบบจะถูกปิดใช้งาน`
+//           };
+//           await client.pushMessage(user.line_user_id, message);
+//           logger.info(`Billing message sent to ${user.line_user_id}`);
+//         }
+//       }
 
-      // ปิดระบบสำหรับผู้ที่ยังไม่จ่าย
-      if (now >= disableTime && now < new Date(disableTime.getTime() + 60000)) {
-        logger.info(`Processing disable for schedule ${schedule.id}`);
-        const users = await pool.request().query(`
-          SELECT 
-            lum.line_user_id,
-            u9.username,
-            lut.status,
-            lut.trans_timestamp
-          FROM line_users_main lum
-          LEFT JOIN line_user_payment_config lupc ON lum.line_user_id = lupc.line_user_id
-          LEFT JOIN userm9 u9 ON lupc.userm9_id = u9.id
-          LEFT JOIN (
-            SELECT line_user_id, status, trans_timestamp
-            FROM line_user_transactions
-            WHERE (line_user_id, trans_timestamp) IN (
-              SELECT line_user_id, MAX(trans_timestamp)
-              FROM line_user_transactions
-              GROUP BY line_user_id
-            )
-          ) lut ON lum.line_user_id = lut.line_user_id
-        `);
+//       // ปิดระบบสำหรับผู้ที่ยังไม่จ่าย
+//       if (now >= disableTime && now < new Date(disableTime.getTime() + 60000)) {
+//         logger.info(`Processing disable for schedule ${schedule.id}`);
+//         const users = await pool.request().query(`
+//           SELECT 
+//             lum.line_user_id,
+//             u9.username,
+//             lut.status,
+//             lut.trans_timestamp
+//           FROM line_users_main lum
+//           LEFT JOIN line_user_payment_config lupc ON lum.line_user_id = lupc.line_user_id
+//           LEFT JOIN userm9 u9 ON lupc.userm9_id = u9.id
+//           LEFT JOIN (
+//             SELECT line_user_id, status, trans_timestamp
+//             FROM line_user_transactions
+//             WHERE (line_user_id, trans_timestamp) IN (
+//               SELECT line_user_id, MAX(trans_timestamp)
+//               FROM line_user_transactions
+//               GROUP BY line_user_id
+//             )
+//           ) lut ON lum.line_user_id = lut.line_user_id
+//         `);
 
-        for (const user of users.recordset) {
-          const lastPaymentDate = user.trans_timestamp ? new Date(user.trans_timestamp) : null;
-          const isPaidAfterBilling = lastPaymentDate && 
-            lastPaymentDate >= billingTime && 
-            user.status === 'on';
+//         for (const user of users.recordset) {
+//           const lastPaymentDate = user.trans_timestamp ? new Date(user.trans_timestamp) : null;
+//           const isPaidAfterBilling = lastPaymentDate && 
+//             lastPaymentDate >= billingTime && 
+//             user.status === 'on';
 
-          if (!isPaidAfterBilling) {
-            await axios.put(STATUS_API_URL, {
-              username: user.username,
-              status: 'off'
-            });
-            await client.pushMessage(user.line_user_id, {
-              type: 'text',
-              text: '❌ ระบบของคุณถูกปิดใช้งานเนื่องจากยังไม่ชำระค่าบริการ'
-            });
-            logger.info(`Disabled system for ${user.line_user_id}`);
-          }
-        }
-      }
-    }
-  } catch (error) {
-    logger.error('Error in scheduler: ' + error.message, { stack: error.stack });
-  } finally {
-    if (pool) pool.close(); // ปิด connection pool
-  }
-});
+//           if (!isPaidAfterBilling) {
+//             await axios.put(STATUS_API_URL, {
+//               username: user.username,
+//               status: 'off'
+//             });
+//             await client.pushMessage(user.line_user_id, {
+//               type: 'text',
+//               text: '❌ ระบบของคุณถูกปิดใช้งานเนื่องจากยังไม่ชำระค่าบริการ'
+//             });
+//             logger.info(`Disabled system for ${user.line_user_id}`);
+//           }
+//         }
+//       }
+//     }
+//   } catch (error) {
+//     logger.error('Error in scheduler: ' + error.message, { stack: error.stack });
+//   } finally {
+//     if (pool) pool.close(); // ปิด connection pool
+//   }
+// });
 
 // Error handling middleware
 app.use((err, req, res, next) => {
