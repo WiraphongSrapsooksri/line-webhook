@@ -1,25 +1,25 @@
 // scheduler.js
-const cron = require('node-cron');
-const { getConnection } = require('./config/database'); // ใช้ getConnection แทน db
-const sql = require('mssql');
-const line = require('@line/bot-sdk');
-const logger = require('./logger');
-const axios = require('axios');
+const cron = require("node-cron");
+const { getConnection } = require("../config/database");
+const sql = require("mssql");
+const line = require("@line/bot-sdk");
+const logger = require("../../logs/index");
+const axios = require("axios");
 
 const lineConfig = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
-  channelSecret: process.env.LINE_CHANNEL_SECRET
+  channelSecret: process.env.LINE_CHANNEL_SECRET,
 };
 
 if (!lineConfig.channelAccessToken || !lineConfig.channelSecret) {
-  logger.error('Missing LINE_CHANNEL_ACCESS_TOKEN or LINE_CHANNEL_SECRET');
+  logger.error("Missing LINE_CHANNEL_ACCESS_TOKEN or LINE_CHANNEL_SECRET");
   process.exit(1);
 }
 
 const client = new line.Client(lineConfig);
 
 // ตรวจสอบกำหนดการทุกนาที
-cron.schedule('* * * * *', async () => {
+cron.schedule("* * * * *", async () => {
   let pool;
   try {
     const now = new Date();
@@ -28,8 +28,7 @@ cron.schedule('* * * * *', async () => {
     pool = await getConnection();
 
     // ดึงกำหนดการที่ active และถึงเวลาดำเนินการ
-    const schedules = await pool.request()
-      .input('now', sql.DateTime2, now)
+    const schedules = await pool.request().input("now", sql.DateTime2, now)
       .query(`
         SELECT id, billing_date, disable_date
         FROM billing_schedule
@@ -41,7 +40,7 @@ cron.schedule('* * * * *', async () => {
       `);
 
     if (!schedules.recordset.length) {
-      logger.info('No billing schedule to process');
+      logger.info("No billing schedule to process");
       return;
     }
 
@@ -61,8 +60,10 @@ cron.schedule('* * * * *', async () => {
 
         for (const user of users.recordset) {
           const message = {
-            type: 'text',
-            text: `📢 ค่าบริการรายเดือน ${user.required_amount} THB\nกรุณาชำระภายใน ${disableTime.toLocaleString()} \nมิฉะนั้นระบบจะถูกปิดใช้งาน`
+            type: "text",
+            text: `📢 ค่าบริการรายเดือน ${
+              user.required_amount
+            } THB\nกรุณาชำระภายใน ${disableTime.toLocaleString()} \nมิฉะนั้นระบบจะถูกปิดใช้งาน`,
           };
           await client.pushMessage(user.line_user_id, message);
           logger.info(`Billing message sent to ${user.line_user_id}`);
@@ -93,19 +94,22 @@ cron.schedule('* * * * *', async () => {
         `);
 
         for (const user of users.recordset) {
-          const lastPaymentDate = user.trans_timestamp ? new Date(user.trans_timestamp) : null;
-          const isPaidAfterBilling = lastPaymentDate && 
-            lastPaymentDate >= billingTime && 
-            user.status === 'on';
+          const lastPaymentDate = user.trans_timestamp
+            ? new Date(user.trans_timestamp)
+            : null;
+          const isPaidAfterBilling =
+            lastPaymentDate &&
+            lastPaymentDate >= billingTime &&
+            user.status === "on";
 
           if (!isPaidAfterBilling) {
             await axios.put(process.env.STATUS_API_URL, {
               username: user.username,
-              status: 'off'
+              status: "off",
             });
             await client.pushMessage(user.line_user_id, {
-              type: 'text',
-              text: '❌ ระบบของคุณถูกปิดใช้งานเนื่องจากยังไม่ชำระค่าบริการ'
+              type: "text",
+              text: "❌ ระบบของคุณถูกปิดใช้งานเนื่องจากยังไม่ชำระค่าบริการ",
             });
             logger.info(`Disabled system for ${user.line_user_id}`);
           }
@@ -113,12 +117,15 @@ cron.schedule('* * * * *', async () => {
       }
     }
   } catch (error) {
-    logger.error('Error in scheduler: ' + error.message, { stack: error.stack });
+    logger.error("Error in scheduler: " + error.message, {
+      stack: error.stack,
+    });
   } finally {
     if (pool) pool.close(); // ปิด connection เพื่อป้องกัน resource leak
   }
 });
 
-logger.info('Scheduler initialized with database-driven billing');
+logger.info("Scheduler initialized with database-driven billing");
 
-module.exports = cron; // Optional: ถ้าต้องการ export เพื่อใช้งานในไฟล์อื่น
+module.exports = cron;
+
